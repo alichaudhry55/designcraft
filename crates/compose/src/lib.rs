@@ -893,6 +893,8 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
     let mut snaps: Vec<Snapshot> = Vec::with_capacity(np);
     let mut info: Vec<ParaInfo> = Vec::with_capacity(np);
     let mut force_col = vec![false; np];
+    // Where a forced paragraph must start, when a kept table it leads moved further than one column.
+    let mut force_to: Vec<Option<(usize, usize)>> = vec![None; np];
     let mut line_cap: Vec<Option<usize>> = vec![None; np];
     // Hyphenate Across Column off: the hyphenation points (story bytes) a paragraph is re-laid
     // without, because a line ending at one of them ended a column or frame. Each re-lay leaves
@@ -939,7 +941,19 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
             && let Some(j) = trial_failed(&mut trial, &mut limits, balance_runs < balance_budget)
         {
             balance_runs += 1;
-            rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+            rewind(
+                j,
+                &snaps,
+                &note_snaps,
+                &mut notes,
+                &mut out,
+                &mut cur,
+                &mut list_counter,
+                &mut force_col,
+                &mut line_cap,
+                &mut no_hyph,
+                &mut force_to,
+            );
             pi = j;
             continue 'paras;
         }
@@ -949,7 +963,19 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 && let Some(j) = balance_end(&mut trial, &mut limits, &cur, &cols, frames, &out, np, balance_runs < balance_budget)
             {
                 balance_runs += 1;
-                rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                rewind(
+                    j,
+                    &snaps,
+                    &note_snaps,
+                    &mut notes,
+                    &mut out,
+                    &mut cur,
+                    &mut list_counter,
+                    &mut force_col,
+                    &mut line_cap,
+                    &mut no_hyph,
+                    &mut force_to,
+                );
                 pi = j;
                 continue 'paras;
             }
@@ -1003,7 +1029,19 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
             if !table::place_table(doc, t, anchor, pi, &pp, frames, &cols, &mut cur, &mut out, opts) {
                 if let Some(j) = trial_failed(&mut trial, &mut limits, balance_runs < balance_budget) {
                     balance_runs += 1;
-                    rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                    rewind(
+                        j,
+                        &snaps,
+                        &note_snaps,
+                        &mut notes,
+                        &mut out,
+                        &mut cur,
+                        &mut list_counter,
+                        &mut force_col,
+                        &mut line_cap,
+                        &mut no_hyph,
+                        &mut force_to,
+                    );
                     pi = j;
                     continue 'paras;
                 }
@@ -1019,7 +1057,22 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 if j < pi && info.get(j).is_some_and(|p| !p.at_top) && !force_col.get(j).copied().unwrap_or(true) && restores < 4 * np + 64 {
                     restores += 1;
                     force_col[j] = true;
-                    rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                    let dest = (cur.fi, cur.col);
+                    rewind(
+                        j,
+                        &snaps,
+                        &note_snaps,
+                        &mut notes,
+                        &mut out,
+                        &mut cur,
+                        &mut list_counter,
+                        &mut force_col,
+                        &mut line_cap,
+                        &mut no_hyph,
+                        &mut force_to,
+                    );
+                    // Replay the chain where the table went, not just one column on.
+                    force_to[j] = Some(dest);
                     pi = j;
                     continue 'paras;
                 }
@@ -1362,6 +1415,11 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
         if force_col[pi] {
             next_column(&mut cur);
         }
+        if let Some(dest) = force_to.get(pi).copied().flatten() {
+            while cur.fi < frames.len() && (cur.fi, cur.col) < dest {
+                next_column(&mut cur);
+            }
+        }
         if cur.last_baseline.is_some() {
             go(&mut cur, pp.start_paragraph);
         } else {
@@ -1408,6 +1466,7 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                             &mut force_col,
                             &mut line_cap,
                             &mut no_hyph,
+                            &mut force_to,
                         );
                         pi = key.1;
                         continue 'paras;
@@ -1463,7 +1522,19 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
             if cur.fi >= frames.len() {
                 if let Some(j) = trial_failed(&mut trial, &mut limits, balance_runs < balance_budget) {
                     balance_runs += 1;
-                    rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                    rewind(
+                        j,
+                        &snaps,
+                        &note_snaps,
+                        &mut notes,
+                        &mut out,
+                        &mut cur,
+                        &mut list_counter,
+                        &mut force_col,
+                        &mut line_cap,
+                        &mut no_hyph,
+                        &mut force_to,
+                    );
                     pi = j;
                     continue 'paras;
                 }
@@ -1698,7 +1769,19 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 {
                     hyph_relays += 1;
                     no_hyph[pi].push(at);
-                    rewind(pi, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                    rewind(
+                        pi,
+                        &snaps,
+                        &note_snaps,
+                        &mut notes,
+                        &mut out,
+                        &mut cur,
+                        &mut list_counter,
+                        &mut force_col,
+                        &mut line_cap,
+                        &mut no_hyph,
+                        &mut force_to,
+                    );
                     continue 'paras;
                 }
                 if !fits {
@@ -1733,6 +1816,7 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                                 &mut force_col,
                                 &mut line_cap,
                                 &mut no_hyph,
+                                &mut force_to,
                             );
                             pi = j;
                             continue 'paras;
@@ -1777,6 +1861,7 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                                 &mut force_col,
                                 &mut line_cap,
                                 &mut no_hyph,
+                                &mut force_to,
                             );
                             pi = j;
                             continue 'paras;
@@ -1900,6 +1985,7 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                             &mut force_col,
                             &mut line_cap,
                             &mut no_hyph,
+                            &mut force_to,
                         );
                         pi = j;
                         continue 'paras;
@@ -2072,6 +2158,7 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                                 &mut force_col,
                                 &mut line_cap,
                                 &mut no_hyph,
+                                &mut force_to,
                             );
                             pi = key.2;
                             continue 'paras;
@@ -2438,8 +2525,10 @@ fn rewind(
     force_col: &mut [bool],
     line_cap: &mut [Option<usize>],
     no_hyph: &mut [Vec<usize>],
+    force_to: &mut [Option<(usize, usize)>],
 ) {
     force_col.iter_mut().skip(j + 1).for_each(|f| *f = false);
+    force_to.iter_mut().skip(j + 1).for_each(|f| *f = None);
     line_cap.iter_mut().skip(j + 1).for_each(|c| *c = None);
     no_hyph.iter_mut().skip(j + 1).for_each(Vec::clear);
     if let Some(s) = snaps.get(j) {

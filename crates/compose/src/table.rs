@@ -282,7 +282,8 @@ pub(crate) fn place_table(
         None => col.y0,
     };
     // A keep-all anchor makes a table atomic: it moves to the first following column (in any
-    // frame) that holds it whole. When none does, it splits from here, as other tables do.
+    // frame) that holds it whole, at the widths composed for this column (a narrower column
+    // would need the table recomposed). When none does, it splits from here, as other tables do.
     let whole_height: f64 = heights.iter().sum();
     if pp.keep_all_lines && y + whole_height > col.y1 + 0.01 {
         let here = cur.clone();
@@ -293,7 +294,7 @@ pub(crate) fn place_table(
                 break;
             }
             let c = col_rect(cur);
-            if c.y0 + whole_height <= c.y1 + 0.01 {
+            if c.y0 + whole_height <= c.y1 + 0.01 && pp.left_indent + total_w + pp.right_indent <= c.width() + 0.01 {
                 found = Some(c);
             }
         }
