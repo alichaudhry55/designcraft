@@ -1054,10 +1054,15 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 while j > 0 && info.get(j - 1).is_some_and(|p| p.keep_with_next > 0 && p.end == start_at) {
                     j -= 1;
                 }
-                if j < pi && info.get(j).is_some_and(|p| !p.at_top) && !force_col.get(j).copied().unwrap_or(true) && restores < 4 * np + 64 {
+                let dest = (cur.fi, cur.col);
+                // Once replayed at the table's column, the chain goes on again when the table, set
+                // below it, moved on whole to a later column: the column held the table alone.
+                let whole = out.frames.get(cur.fi).and_then(|f| f.tables.last()).is_some_and(|t| t.first && t.last);
+                let again = whole && force_to.get(j).copied().flatten().is_some_and(|d| dest > d);
+                let first = info.get(j).is_some_and(|p| !p.at_top) && !force_col.get(j).copied().unwrap_or(true);
+                if j < pi && (first || again) && restores < 4 * np + 64 {
                     restores += 1;
                     force_col[j] = true;
-                    let dest = (cur.fi, cur.col);
                     rewind(
                         j,
                         &snaps,
