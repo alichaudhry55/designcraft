@@ -998,8 +998,8 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
         // a span changes nothing.
         let spans_in = |fi: usize| spanning && cols.get(fi).is_some_and(|c| c.len() > 1);
         // Consecutive paragraphs with the same Split Columns settings share a split block; within
-        // it, a paragraph moves on to the next sub-column.
-        let split_cfg = SplitCfg::of(&pp);
+        // it, a paragraph moves on to the next sub-column. A table ends the block, as at its end.
+        let split_cfg = if story.para_table(pi).is_some() { None } else { SplitCfg::of(&pp) };
         split_paras[pi] = split_cfg.is_some();
         if cur.split.is_some_and(|s| Some(s.cfg) != split_cfg) {
             cur.split = None;

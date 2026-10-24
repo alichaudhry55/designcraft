@@ -6089,6 +6089,25 @@ fn a_line_that_exactly_fills_the_measure_fits() {
 
 // ---------- split columns ----------
 
+#[test]
+fn a_table_in_a_split_block_ends_it_and_the_text_after_stays_below() {
+    // A short frame: the second paragraph after the table moves on to the next sub-column, which
+    // must start below the table, not at the top of the block before it.
+    let cfg = (2, 12.0, 0.0);
+    let (mut d, sid, _, first) = split_doc(3, 0, Rect::new(0.0, 0.0, 400.0, 260.0), cfg);
+    let st = d.story_mut(sid).unwrap();
+    let at = st.para_ranges()[first + 1].start;
+    st.insert_table(at, filled(3, 2, 1, 300.0));
+    let ti = st.paras.iter().position(|p| p.table.is_some()).unwrap();
+    st.paras[ti].para.span_columns = Some(SpanColumns::Split(cfg.0));
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let ft = &cs.frames[0];
+    let t = &ft.tables[0];
+    let after: Vec<_> = ft.lines.iter().filter(|l| l.para > ti).collect();
+    assert!(after.len() > 1);
+    assert!(after.iter().all(|l| l.baseline > t.rect.y1), "text after the table must stay below it");
+}
+
 /// A story of a body paragraph, `split` paragraphs in split columns and `after` body paragraphs.
 /// Returns the index of the first split paragraph.
 fn split_doc(split: usize, after: usize, rect: Rect, cfg: (u32, f64, f64)) -> (Document, StoryId, ItemId, usize) {
