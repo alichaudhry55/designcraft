@@ -281,17 +281,28 @@ pub(crate) fn place_table(
         Some(b) => b + cur.last_descent + cur.pending + o.space_before,
         None => col.y0,
     };
-    // A keep-all anchor makes a table atomic when it fits an empty column.
-    // Oversized tables retain the existing fallback so the caller can report them.
+    // A keep-all anchor makes a table atomic: it moves to the first following column (in any
+    // frame) that holds it whole. When none does, it splits from here, as other tables do.
     let whole_height: f64 = heights.iter().sum();
-    if pp.keep_all_lines && whole_height <= col.height() + 0.01 {
-        while y + whole_height > col.y1 + 0.01 && cur.last_baseline.is_some() {
+    if pp.keep_all_lines && y + whole_height > col.y1 + 0.01 {
+        let here = cur.clone();
+        let mut found = None;
+        while found.is_none() {
             cur.next_column(cols);
             if cur.fi >= frames.len() {
-                return false;
+                break;
             }
-            col = col_rect(cur);
-            y = col.y0;
+            let c = col_rect(cur);
+            if c.y0 + whole_height <= c.y1 + 0.01 {
+                found = Some(c);
+            }
+        }
+        match found {
+            Some(c) => {
+                col = c;
+                y = c.y0;
+            }
+            None => *cur = here,
         }
     }
     let mut frag_rows: Vec<(usize, f64, bool)> = Vec::new(); // (row, y, repeated)
