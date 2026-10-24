@@ -7746,3 +7746,24 @@ fn anchored_text_frames_compose_against_the_grid_where_they_are_placed() {
     Arc::make_mut(&mut d.spreads[1]).pages[1].side = designcraft_doc::PageSide::Left;
     assert!(!Arc::ptr_eq(&before, &cache.get(&d, nsid, None)));
 }
+
+#[test]
+fn kept_table_moves_whole_with_its_heading() {
+    let (mut d, sid, _) = keep_doc(6, &["Synthetic heading"], 160.0);
+    let st = d.story_mut(sid).unwrap();
+    let anchor = st.text.len();
+    let mut table = designcraft_doc::Table::new(77, 4, 2, 0, 0, 100.0);
+    for row in &mut table.rows {
+        row.height = 24.0;
+    }
+    st.insert_table(anchor, table);
+    let i = st.paras.iter().position(|p| p.table.is_some()).unwrap();
+    st.paras[i].para.keep_all_lines = Some(true);
+    st.paras[i - 1].para.keep_with_next = Some(1);
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let fragments: Vec<_> = cs.frames.iter().flat_map(|f| &f.tables).collect();
+    assert_eq!(fragments.len(), 1);
+    assert!(fragments[0].first && fragments[0].last);
+    let cols = column_of_para(&cs, i - 1);
+    assert_eq!(cols, vec![fragments[0].column]);
+}

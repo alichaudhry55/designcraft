@@ -1010,6 +1010,20 @@ fn compose_with_db(doc: &Document, story: &Story, frames: &[FrameSpec], opts: &C
                 out.overset_at = Some(prange.start);
                 break 'paras;
             }
+            // Table anchors must honour the preceding keep-with-next chain too.
+            if (cur.fi, cur.col) != start_at && pp.keep_all_lines {
+                let mut j = pi;
+                while j > 0 && info.get(j - 1).is_some_and(|p| p.keep_with_next > 0 && p.end == start_at) {
+                    j -= 1;
+                }
+                if j < pi && info.get(j).is_some_and(|p| !p.at_top) && !force_col.get(j).copied().unwrap_or(true) && restores < 4 * np + 64 {
+                    restores += 1;
+                    force_col[j] = true;
+                    rewind(j, &snaps, &note_snaps, &mut notes, &mut out, &mut cur, &mut list_counter, &mut force_col, &mut line_cap, &mut no_hyph);
+                    pi = j;
+                    continue 'paras;
+                }
+            }
             info.push(ParaInfo {
                 start: start_at,
                 at_top,
